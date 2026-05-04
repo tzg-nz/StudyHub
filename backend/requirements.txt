@@ -8,3 +8,4 @@ gunicorn>=21.0
 dj-database-url>=2.0
 mangum>=0.17
 psycopg2-binary>=2.9
+Pillow>=10.0
