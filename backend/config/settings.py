@@ -8,13 +8,24 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-studyhub-dev-key-change-in-production')
+def get_env(key, default=''):
+    value = os.environ.get(key.upper(), os.environ.get(key.lower(), default))
+    return value
 
-DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
+def get_env_bool(key, default='True'):
+    return get_env(key, str(default)).lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+def get_env_list(key, default=''):
+    value = get_env(key, default)
+    return [v for v in value.split(',') if v] if value else []
 
-VERCEL = os.environ.get('VERCEL') == '1'
+SECRET_KEY = get_env('DJANGO_SECRET_KEY', 'django-insecure-studyhub-dev-key-change-in-production')
+
+DEBUG = get_env_bool('DEBUG', 'True')
+
+ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+
+VERCEL = get_env('VERCEL', '') == '1'
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -63,17 +74,17 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3'),
-        'NAME': os.environ.get('DB_NAME', BASE_DIR / 'db.sqlite3'),
-        'USER': os.environ.get('DB_USER', ''),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', ''),
-        'PORT': os.environ.get('DB_PORT', ''),
+        'ENGINE': get_env('DB_ENGINE', 'django.db.backends.sqlite3'),
+        'NAME': get_env('DB_NAME', str(BASE_DIR / 'db.sqlite3')),
+        'USER': get_env('DB_USER', ''),
+        'PASSWORD': get_env('DB_PASSWORD', ''),
+        'HOST': get_env('DB_HOST', ''),
+        'PORT': get_env('DB_PORT', ''),
     }
 }
 
 if VERCEL:
-    DATABASE_URL = os.environ.get('DATABASE_URL')
+    DATABASE_URL = get_env('DATABASE_URL', '')
     if DATABASE_URL:
         import dj_database_url
         DATABASES['default'] = dj_database_url.parse(DATABASE_URL)
@@ -93,20 +104,17 @@ USE_TZ = False
 STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS配置 - 允许跨域
-CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 'yes')
+CORS_ALLOW_ALL_ORIGINS = get_env_bool('CORS_ALLOW_ALL_ORIGINS', 'True')
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [origin for origin in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if origin]
+CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS', '')
 
-# CSRF配置
-CSRF_TRUSTED_ORIGINS = [origin for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174').split(',') if origin]
+CSRF_TRUSTED_ORIGINS = get_env_list('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174')
 
-# Session配置
 if VERCEL:
     SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 else:
     SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7天
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
 SESSION_COOKIE_NAME = 'studyhub_sessionid'
 SESSION_COOKIE_DOMAIN = None
 SESSION_COOKIE_SECURE = not DEBUG or VERCEL
@@ -137,10 +145,8 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'users.User'
 
-# 静态文件收集路径（生产环境）
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# 生产环境安全配置
 if not DEBUG or VERCEL:
     if not VERCEL:
         SECURE_SSL_REDIRECT = True
