@@ -1,0 +1,495 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "StudyHub API",
+    "description": "StudyHub项目API文档 - 包含三种认证方式（Session/Token/Cookie）、帖子、评论等功能",
+    "version": "2.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:8000/api", "description": "本地开发环境" }
+  ],
+  "paths": {
+    "/auth/csrf/": {
+      "get": {
+        "tags": ["认证"],
+        "summary": "获取CSRF Token",
+        "description": "获取CSRF Token，响应会通过Set-Cookie返回csrftoken。Session认证的POST请求需要此Token。",
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "headers": { "Set-Cookie": { "description": "csrftoken=xxx" } }
+          }
+        }
+      }
+    },
+    "/auth/register/": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "用户注册",
+        "description": "注册新用户，邮箱和bio选填。注册成功后需要自行登录。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password", "password_confirm"],
+                "properties": {
+                  "username": { "type": "string", "description": "用户名" },
+                  "password": { "type": "string", "minLength": 6, "description": "密码（至少6位）" },
+                  "password_confirm": { "type": "string", "description": "确认密码（需与password一致）" },
+                  "email": { "type": "string", "format": "email", "description": "邮箱（选填）" },
+                  "bio": { "type": "string", "maxLength": 500, "description": "个人简介（选填）" }
+                }
+              },
+              "example": { "username": "testuser", "password": "123456", "password_confirm": "123456" }
+            }
+          }
+        },
+        "responses": { "201": { "description": "注册成功" }, "400": { "description": "参数错误" } }
+      }
+    },
+    "/auth/session/login/": {
+      "post": {
+        "tags": ["认证 - Session"],
+        "summary": "Session登录",
+        "description": "使用Session认证登录，成功后服务端创建Session并返回studyhub_sessionid和csrftoken Cookie。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              },
+              "example": { "username": "testuser", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "headers": { "Set-Cookie": { "description": "studyhub_sessionid=xxx (HttpOnly, 7天); csrftoken=xxx (用于后续POST请求的CSRF验证)" } }
+          },
+          "401": { "description": "用户名或密码错误" }
+        }
+      }
+    },
+    "/auth/session/logout/": {
+      "post": {
+        "tags": ["认证 - Session"],
+        "summary": "Session登出",
+        "description": "销毁服务端Session并清除所有认证Cookie。需要CSRF Token验证。",
+        "parameters": [
+          { "name": "Cookie", "in": "header", "required": true, "schema": { "type": "string" }, "description": "studyhub_sessionid=xxx; csrftoken=xxx" },
+          { "name": "X-CSRFToken", "in": "header", "required": true, "schema": { "type": "string" }, "description": "从Cookie中读取csrftoken的值，放到请求头中" }
+        ],
+        "responses": {
+          "200": { "description": "登出成功" },
+          "403": { "description": "CSRF验证失败" },
+          "401": { "description": "未认证" }
+        }
+      }
+    },
+    "/auth/session/profile/": {
+      "get": {
+        "tags": ["认证 - Session"],
+        "summary": "Session获取用户信息",
+        "description": "获取当前Session认证的用户信息。GET请求不需要CSRF Token。",
+        "parameters": [
+          { "name": "Cookie", "in": "header", "required": true, "schema": { "type": "string" }, "description": "studyhub_sessionid=xxx" }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/auth/token/login/": {
+      "post": {
+        "tags": ["认证 - Token"],
+        "summary": "Token登录",
+        "description": "使用Token(JWT)认证登录，返回access_token和refresh_token。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+              },
+              "example": { "username": "testuser", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "auth_type": { "type": "string" },
+                    "user": { "type": "object" },
+                    "access": { "type": "string", "description": "短期Token（60分钟有效）" },
+                    "refresh": { "type": "string", "description": "长期Token（7天有效）" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "用户名或密码错误" }
+        }
+      }
+    },
+    "/auth/token/logout/": {
+      "post": {
+        "tags": ["认证 - Token"],
+        "summary": "Token登出",
+        "description": "将refresh_token加入黑名单。需要在请求头携带access_token进行身份验证。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "required": true, "schema": { "type": "string" }, "description": "Bearer <access_token>" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "refresh": { "type": "string", "description": "refresh_token（用于加入黑名单，选填）" } }
+              },
+              "example": { "refresh": "你的refresh_token值" }
+            }
+          }
+        },
+        "responses": { "200": { "description": "登出成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/auth/token/refresh/": {
+      "post": {
+        "tags": ["认证 - Token"],
+        "summary": "刷新Token",
+        "description": "使用refresh_token获取新的access_token。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["refresh"],
+                "properties": { "refresh": { "type": "string", "description": "refresh_token" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "刷新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "access": { "type": "string" }, "refresh": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "401": { "description": "refresh_token无效或过期" }
+        }
+      }
+    },
+    "/auth/token/profile/": {
+      "get": {
+        "tags": ["认证 - Token"],
+        "summary": "Token获取用户信息",
+        "description": "获取当前Token认证的用户信息。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "required": true, "schema": { "type": "string" }, "description": "Bearer <access_token>" }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/auth/cookie/login/": {
+      "post": {
+        "tags": ["认证 - Cookie"],
+        "summary": "Cookie登录",
+        "description": "使用Cookie认证登录，服务端将access_token设置到HttpOnly Cookie中。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+              },
+              "example": { "username": "testuser", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "headers": {
+              "Set-Cookie": { "description": "access_token=xxx (HttpOnly, 1小时); refresh_token=xxx (HttpOnly, 7天); username=xxx (非HttpOnly)" }
+            }
+          },
+          "401": { "description": "用户名或密码错误" }
+        }
+      }
+    },
+    "/auth/cookie/logout/": {
+      "post": {
+        "tags": ["认证 - Cookie"],
+        "summary": "Cookie登出",
+        "description": "清除所有认证Cookie。不需要CSRF Token。需要Cookie中的access_token或请求头Authorization进行身份验证。",
+        "parameters": [
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "access_token=xxx（二选一）" },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>（二选一）" }
+        ],
+        "responses": { "200": { "description": "登出成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/auth/cookie/profile/": {
+      "get": {
+        "tags": ["认证 - Cookie"],
+        "summary": "Cookie获取用户信息",
+        "description": "获取当前Cookie认证的用户信息。",
+        "parameters": [
+          { "name": "Cookie", "in": "header", "required": true, "schema": { "type": "string" }, "description": "access_token=xxx" }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/auth/compare/": {
+      "get": {
+        "tags": ["认证"],
+        "summary": "三种认证状态对比",
+        "description": "同时检查三种认证方式的登录状态，返回每种认证的状态和用户信息。",
+        "responses": { "200": { "description": "获取成功" } }
+      }
+    },
+    "/posts/": {
+      "get": {
+        "tags": ["帖子"],
+        "summary": "帖子列表",
+        "description": "获取帖子列表（仅已发布的帖子），支持搜索和分页。",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "获取成功" } }
+      },
+      "post": {
+        "tags": ["帖子"],
+        "summary": "创建帖子/保存草稿",
+        "description": "创建新帖子或保存草稿。需要认证。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>（Token认证）" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "studyhub_sessionid=xxx 或 access_token=xxx（Session/Cookie认证）" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "description": "帖子标题" },
+                  "content": { "type": "string", "description": "帖子内容（发布时必填）" },
+                  "is_draft": { "type": "boolean", "default": false, "description": "是否为草稿" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "创建成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/{id}/": {
+      "get": {
+        "tags": ["帖子"],
+        "summary": "帖子详情",
+        "description": "获取帖子详情，非草稿帖子自动增加浏览量。",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "获取成功" }, "404": { "description": "帖子不存在" } }
+      },
+      "put": {
+        "tags": ["帖子"],
+        "summary": "更新帖子",
+        "description": "更新帖子内容，仅作者可操作。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "content": { "type": "string" },
+                  "is_draft": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "更新成功" }, "403": { "description": "无权限" }, "401": { "description": "未认证" } }
+      },
+      "delete": {
+        "tags": ["帖子"],
+        "summary": "删除帖子",
+        "description": "删除帖子，仅作者可操作。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "responses": { "204": { "description": "删除成功" }, "403": { "description": "无权限" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/{id}/like/": {
+      "post": {
+        "tags": ["帖子"],
+        "summary": "点赞/取消点赞",
+        "description": "切换点赞状态。需要认证。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "responses": { "200": { "description": "操作成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/{id}/favorite/": {
+      "post": {
+        "tags": ["帖子"],
+        "summary": "收藏/取消收藏",
+        "description": "切换收藏状态。需要认证。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "responses": { "200": { "description": "操作成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/my_posts/": {
+      "get": {
+        "tags": ["帖子"],
+        "summary": "我的帖子",
+        "description": "获取当前用户发布的所有帖子。需要认证。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/my_favorites/": {
+      "get": {
+        "tags": ["帖子"],
+        "summary": "我的收藏",
+        "description": "获取当前用户收藏的所有帖子。需要认证。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/my_drafts/": {
+      "get": {
+        "tags": ["帖子"],
+        "summary": "我的草稿",
+        "description": "获取当前用户的所有草稿。需要认证。",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "获取成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/{post_pk}/comments/": {
+      "get": {
+        "tags": ["评论"],
+        "summary": "帖子评论列表",
+        "parameters": [{ "name": "post_pk", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "获取成功" } }
+      },
+      "post": {
+        "tags": ["评论"],
+        "summary": "发表评论",
+        "description": "对指定帖子发表评论。需要认证。",
+        "parameters": [
+          { "name": "post_pk", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "required": ["content"], "properties": { "content": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": { "201": { "description": "评论成功" }, "401": { "description": "未认证" } }
+      }
+    },
+    "/posts/{post_pk}/comments/{id}/": {
+      "put": {
+        "tags": ["评论"],
+        "summary": "编辑评论",
+        "description": "编辑自己的评论，仅评论者可操作。",
+        "parameters": [
+          { "name": "post_pk", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": { "content": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": { "200": { "description": "更新成功" }, "403": { "description": "无权限" }, "401": { "description": "未认证" } }
+      },
+      "delete": {
+        "tags": ["评论"],
+        "summary": "删除评论",
+        "description": "删除自己的评论，仅评论者可操作。",
+        "parameters": [
+          { "name": "post_pk", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "Authorization", "in": "header", "schema": { "type": "string" }, "description": "Bearer <access_token>" },
+          { "name": "Cookie", "in": "header", "schema": { "type": "string" }, "description": "认证Cookie" }
+        ],
+        "responses": { "204": { "description": "删除成功" }, "403": { "description": "无权限" }, "401": { "description": "未认证" } }
+      }
+    }
+  },
+  "tags": [
+    { "name": "认证", "description": "注册、CSRF Token、认证状态对比" },
+    { "name": "认证 - Session", "description": "Session认证（需要CSRF Token）" },
+    { "name": "认证 - Token", "description": "Token(JWT)认证（请求头Authorization: Bearer <token>）" },
+    { "name": "认证 - Cookie", "description": "Cookie认证（浏览器自动携带Cookie）" },
+    { "name": "帖子", "description": "帖子CRUD、点赞、收藏" },
+    { "name": "评论", "description": "评论CRUD" }
+  ]
+}
