@@ -14,6 +14,8 @@ DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+VERCEL = os.environ.get('VERCEL') == '1'
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -57,6 +59,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 DATABASES = {
     'default': {
@@ -68,6 +71,12 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', ''),
     }
 }
+
+if VERCEL:
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if DATABASE_URL:
+        import dj_database_url
+        DATABASES['default'] = dj_database_url.parse(DATABASE_URL)
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -93,14 +102,17 @@ CORS_ALLOWED_ORIGINS = [origin for origin in os.environ.get('CORS_ALLOWED_ORIGIN
 CSRF_TRUSTED_ORIGINS = [origin for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174').split(',') if origin]
 
 # Session配置
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+if VERCEL:
+    SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+else:
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7天
 SESSION_COOKIE_NAME = 'studyhub_sessionid'
-SESSION_COOKIE_DOMAIN = None  # 不设置domain，使用当前域名
-SESSION_COOKIE_SECURE = False  # 开发环境设为False
-SESSION_COOKIE_HTTPONLY = True  # 防止JavaScript访问
-SESSION_COOKIE_SAMESITE = 'Lax'  # 防止CSRF攻击
-SESSION_SAVE_EVERY_REQUEST = False  # 每次请求都保存session
+SESSION_COOKIE_DOMAIN = None
+SESSION_COOKIE_SECURE = not DEBUG or VERCEL
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax' if not VERCEL else 'None'
+SESSION_SAVE_EVERY_REQUEST = False
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -129,14 +141,20 @@ AUTH_USER_MODEL = 'users.User'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # 生产环境安全配置
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+if not DEBUG or VERCEL:
+    if not VERCEL:
+        SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+    if VERCEL:
+        SECURE_HSTS_SECONDS = 0
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+        SECURE_HSTS_PRELOAD = False
+    else:
+        SECURE_HSTS_SECONDS = 31536000
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+        SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = 'DENY'
