@@ -83,11 +83,10 @@ DATABASES = {
     }
 }
 
-if VERCEL:
-    DATABASE_URL = get_env('DATABASE_URL', '')
-    if DATABASE_URL:
-        import dj_database_url
-        DATABASES['default'] = dj_database_url.parse(DATABASE_URL)
+DATABASE_URL = get_env('DATABASE_URL', '')
+if DATABASE_URL:
+    import dj_database_url
+    DATABASES['default'] = dj_database_url.parse(DATABASE_URL)
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
