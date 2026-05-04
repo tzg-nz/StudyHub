@@ -2,7 +2,7 @@ import axios from 'axios'
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import { getCSRFToken } from './cookie'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+const API_BASE = '/api'
 
 const http: AxiosInstance = axios.create({
   baseURL: API_BASE,
